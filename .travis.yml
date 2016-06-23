@@ -1,0 +1,30 @@
+#
+# Copyright (c) 2008-2016 the Urho3D project.
+#
+# Permission is hereby granted, free of charge, to any person obtaining a copy
+# of this software and associated documentation files (the "Software"), to deal
+# in the Software without restriction, including without limitation the rights
+# to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+# copies of the Software, and to permit persons to whom the Software is
+# furnished to do so, subject to the following conditions:
+#
+# The above copyright notice and this permission notice shall be included in
+# all copies or substantial portions of the Software.
+#
+# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+# AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+# LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+# OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
+# THE SOFTWARE.
+#
+
+env:
+  global:
+    - secure: fluHAY9mOCw7p+4i4WYHr/lhOTK7G80G4fRT7oooThPMlyU3FJC93z+XCnV5xKIbD2Ht6I7k4Z0pqAsOiYRFNEOXCJPklRW/epmULFvw/PliocwAnopGD+iSzSjDVl89TTn16Qf6Bh++hioKZb0MJYRLJb253dxS+4GNYkXE8A3NnlCHpVtfSnSgvHL8UEEL8kBHVD99AxkqnArLhwOURiWlGHk+q5zMGMu/D/lsKDBo07WZDI3grNd83DuT9KUmsLa74aOQMlzfUQZ3BnhwXaPhsLIRFpQH4vmhcuN+ozdjfFqmiOk4kyAAeUbxZMZ4uGo6CmlIYY8VBUScSEp6pgmWI3cvEEO060Hw/EGts1k6HuZkMsEhuVVRMR3DJ2xbkE2dn2fgHuCwx/qsmG8UboMWx5alk+2r5tDYcQkRoFAC/CoH+636Bjutks0dW/tpN433Abr+V24wN/A3W1VlqzujAoETfMwW+h+FtNad87dG334s/rSsRcTv8dmIZ4bGzlsZvSDkG+xSa37ynXO2ydZYsY52zB4C1Sk8KYQzK9krS2yVzBSfeAtRivouaC6whcHurk6NUTMrIb7kk7ihfHkqy5ca5UDxquh2e6/rctoCmXM3bWS44pgWHUM253aHASpTHpVo0Vu2PhFC/yGx6iR8TG0ovucIJlH3sSduYz0=
+    - name: xenial
+language: ruby
+sudo: true
+
+# vi: set ts=2 sw=2 expandtab:
