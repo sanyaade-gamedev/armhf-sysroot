@@ -1,0 +1,11 @@
+[Unit]
+Description=Timer to automatically refresh installed snaps
+
+[Timer]
+OnCalendar=23,05,11,17:00
+RandomizedDelaySec=6h
+AccuracySec=10min
+Persistent=true
+
+[Install]
+WantedBy=multi-user.target
