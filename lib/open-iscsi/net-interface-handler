@@ -28,7 +28,8 @@ start() {
             . "/run/net-$iface.conf"
             R=""
             [ -n "$DOMAINSEARCH" ] && R="$R${CR}domainsearch $DOMAINSEARCH"
-            for ns in "$IPV4DNS0" "$IPV4DNS1"; do
+            [ -n "$IPV6DOMAINSEARCH" ] && R="$R${CR}domainsearch $IPV6DOMAINSEARCH"
+            for ns in "$IPV4DNS0" "$IPV4DNS1" "$IPV6DNS0" "$IPV6DNS1"; do
                 [ -n "$ns" -a "$ns" != "0.0.0.0" ] && R="$R${CR}nameserver $ns"
             done
             if [ -n "$R" ]; then

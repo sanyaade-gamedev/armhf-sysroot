@@ -47,12 +47,12 @@ Example config:
 """
 
 from cloudinit import log as logging
-from cloudinit import util
 from cloudinit.settings import PER_INSTANCE
+from cloudinit import util
 
 import glob
-import tempfile
 import os
+import tempfile
 
 LOG = logging.getLogger(__name__)
 
@@ -67,6 +67,8 @@ BUILTIN_CFG = {
     'system_snappy': "auto",
     'config': {},
 }
+
+distros = ['ubuntu']
 
 
 def parse_filename(fname):

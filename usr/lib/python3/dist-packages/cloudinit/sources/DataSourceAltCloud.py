@@ -110,12 +110,6 @@ class DataSourceAltCloud(sources.DataSource):
 
         '''
 
-        uname_arch = os.uname()[4]
-        if uname_arch.startswith("arm") or uname_arch == "aarch64":
-            # Disabling because dmi data is not available on ARM processors
-            LOG.debug("Disabling AltCloud datasource on arm (LP: #1243287)")
-            return 'UNKNOWN'
-
         system_name = util.read_dmi_data("system-product-name")
         if not system_name:
             return 'UNKNOWN'
@@ -205,8 +199,7 @@ class DataSourceAltCloud(sources.DataSource):
                         _err.message)
             return False
         except OSError as _err:
-            util.logexc(LOG, 'Failed command: %s\n%s', ' '.join(cmd),
-                        _err.message)
+            util.logexc(LOG, 'Failed command: %s\n%s', ' '.join(cmd), _err)
             return False
 
         floppy_dev = '/dev/fd0'

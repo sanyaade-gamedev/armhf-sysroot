@@ -31,6 +31,9 @@ import stat
 
 from cloudinit import importer
 from cloudinit import log as logging
+from cloudinit import net
+from cloudinit.net import eni
+from cloudinit.net import network_state
 from cloudinit import ssh_util
 from cloudinit import type_utils
 from cloudinit import util
@@ -50,8 +53,8 @@ OSFAMILIES = {
 LOG = logging.getLogger(__name__)
 
 
+@six.add_metaclass(abc.ABCMeta)
 class Distro(object):
-    __metaclass__ = abc.ABCMeta
 
     usr_lib_exec = "/usr/lib"
     hosts_fn = "/etc/hosts"
@@ -97,7 +100,7 @@ class Distro(object):
         try:
             res = os.lstat('/run/systemd/system')
             return stat.S_ISDIR(res.st_mode)
-        except:
+        except Exception:
             return False
 
     @abc.abstractmethod
@@ -109,7 +112,7 @@ class Distro(object):
         raise NotImplementedError()
 
     def get_primary_arch(self):
-        arch = os.uname[4]
+        arch = os.uname()[4]
         if arch in ("i386", "i486", "i586", "i686"):
             return "i386"
         return arch
@@ -128,6 +131,8 @@ class Distro(object):
                                         mirror_info=arch_info)
 
     def apply_network(self, settings, bring_up=True):
+        # this applies network where 'settings' is interfaces(5) style
+        # it is obsolete compared to apply_network_config
         # Write it out
         dev_names = self._write_network(settings)
         # Now try to bring them up
@@ -135,13 +140,38 @@ class Distro(object):
             return self._bring_up_interfaces(dev_names)
         return False
 
+    def _apply_network_from_network_config(self, netconfig, bring_up=True):
+        distro = self.__class__
+        LOG.warn("apply_network_config is not currently implemented "
+                 "for distribution '%s'.  Attempting to use apply_network",
+                 distro)
+        header = '\n'.join([
+            "# Converted from network_config for distro %s" % distro,
+            "# Implmentation of _write_network_config is needed."
+        ])
+        ns = network_state.parse_net_config_data(netconfig)
+        contents = eni.network_state_to_eni(
+            ns, header=header, render_hwaddress=True)
+        return self.apply_network(contents, bring_up=bring_up)
+
     def apply_network_config(self, netconfig, bring_up=False):
-        # Write it out
-        dev_names = self._write_network_config(netconfig)
+        # apply network config netconfig
+        # This method is preferred to apply_network which only takes
+        # a much less complete network config format (interfaces(5)).
+        try:
+            dev_names = self._write_network_config(netconfig)
+        except NotImplementedError:
+            # backwards compat until all distros have apply_network_config
+            return self._apply_network_from_network_config(
+                netconfig, bring_up=bring_up)
+
         # Now try to bring them up
         if bring_up:
             return self._bring_up_interfaces(dev_names)
         return False
+
+    def apply_network_config_names(self, netconfig):
+        net.apply_network_config_names(netconfig)
 
     @abc.abstractmethod
     def apply_locale(self, locale, out_fn=None):
@@ -448,7 +478,7 @@ class Distro(object):
             keys = kwargs['ssh_authorized_keys']
             if isinstance(keys, six.string_types):
                 keys = [keys]
-            if isinstance(keys, dict):
+            elif isinstance(keys, dict):
                 keys = list(keys.values())
             if keys is not None:
                 if not isinstance(keys, (tuple, list, set)):

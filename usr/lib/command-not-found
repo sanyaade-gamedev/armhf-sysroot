@@ -18,7 +18,7 @@ try:
         # /etc/bash.bashrc.
         import os
         if "COMMAND_NOT_FOUND_FORCE_PYTHON2" not in os.environ:
-            os.execvp("python3", [sys.argv[0]] + sys.argv)
+            os.execvp("/usr/bin/python3", [sys.argv[0]] + sys.argv)
 
     import gettext
     import locale

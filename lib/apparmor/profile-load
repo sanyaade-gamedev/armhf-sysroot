@@ -21,8 +21,10 @@
 
 [ -z "$1" ]                  && exit 1 # require a profile name
 
+. /lib/apparmor/functions
+
 # do not load in a container
-systemd-detect-virt --quiet --container && exit 0 || true
+systemd-detect-virt --quiet --container && ! is_container_with_internal_policy && exit 0 || true
 
 [ -d /rofs/etc/apparmor.d ]  && exit 0 # do not load if running liveCD
 

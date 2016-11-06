@@ -1142,7 +1142,10 @@ class Popen(object):
                 errread, errwrite = self.pipe_cloexec()
                 to_close.update((errread, errwrite))
             elif stderr == STDOUT:
-                errwrite = c2pwrite
+                if c2pwrite is not None:
+                    errwrite = c2pwrite
+                else: # child's stdout is not set, use parent's stdout
+                    errwrite = sys.__stdout__.fileno()
             elif isinstance(stderr, int):
                 errwrite = stderr
             else:
@@ -1314,7 +1317,7 @@ class Popen(object):
 
                 # Wait for exec to fail or succeed; possibly raising exception
                 data = _eintr_retry_call(os.read, errpipe_read, 1048576)
-                pickle_bits = [data]
+                pickle_bits = []
                 while data:
                     pickle_bits.append(data)
                     data = _eintr_retry_call(os.read, errpipe_read, 1048576)

@@ -28,45 +28,12 @@
 #define __need_error_t
 #include <errno.h>
 
-#ifndef __THROW
-# define __THROW
-#endif
-#ifndef __NTH
-# define __NTH(fct) fct __THROW
-#endif
-
-/* The __attribute__ feature is available in gcc versions 2.5 and later.
-   The __-protected variants of the attributes 'format' and 'printf' are
-   accepted by gcc versions 2.6.4 (effectively 2.7) and later.
-   We enable _GL_ATTRIBUTE_FORMAT only if these are supported too, because
-   gnulib and libintl do '#define printf __printf__' when they override
-   the 'printf' function.  */
-#if __GNUC__ > 2 || (__GNUC__ == 2 && __GNUC_MINOR__ >= 7)
-# define _GL_ATTRIBUTE_FORMAT(spec) __attribute__ ((__format__ spec))
-#else
-# define _GL_ATTRIBUTE_FORMAT(spec) /* empty */
-#endif
-
-/* GCC 2.95 and later have "__restrict"; C99 compilers have
-   "restrict", and "configure" may have defined "restrict".  */
-#ifndef __restrict
-# if ! (2 < __GNUC__ || (2 == __GNUC__ && 95 <= __GNUC_MINOR__))
-#  if defined restrict || 199901L <= __STDC_VERSION__
-#   define __restrict restrict
-#  else
-#   define __restrict
-#  endif
-# endif
-#endif
-
 #ifndef __error_t_defined
 typedef int error_t;
 # define __error_t_defined
 #endif
 
-#ifdef  __cplusplus
-extern "C" {
-#endif
+__BEGIN_DECLS
 
 /* A description of a particular option.  A pointer to an array of
    these is passed in the OPTIONS field of an argp structure.  Each option
@@ -502,10 +469,10 @@ extern void __argp_usage (const struct argp_state *__state);
    message, then exit (1).  */
 extern void argp_error (const struct argp_state *__restrict __state,
 			const char *__restrict __fmt, ...)
-     _GL_ATTRIBUTE_FORMAT ((__printf__, 2, 3));
+     __attribute__ ((__format__ (__printf__, 2, 3)));
 extern void __argp_error (const struct argp_state *__restrict __state,
 			  const char *__restrict __fmt, ...)
-    _GL_ATTRIBUTE_FORMAT ((__printf__, 2, 3));
+     __attribute__ ((__format__ (__printf__, 2, 3)));
 
 /* Similar to the standard gnu error-reporting function error(), but will
    respect the ARGP_NO_EXIT and ARGP_NO_ERRS flags in STATE, and will print
@@ -518,11 +485,11 @@ extern void __argp_error (const struct argp_state *__restrict __state,
 extern void argp_failure (const struct argp_state *__restrict __state,
 			  int __status, int __errnum,
 			  const char *__restrict __fmt, ...)
-     _GL_ATTRIBUTE_FORMAT ((__printf__, 4, 5));
+     __attribute__ ((__format__ (__printf__, 4, 5)));
 extern void __argp_failure (const struct argp_state *__restrict __state,
 			    int __status, int __errnum,
 			    const char *__restrict __fmt, ...)
-     _GL_ATTRIBUTE_FORMAT ((__printf__, 4, 5));
+     __attribute__ ((__format__ (__printf__, 4, 5)));
 
 /* Returns true if the option OPT is a valid short option.  */
 extern int _option_is_short (const struct argp_option *__opt) __THROW;
@@ -587,8 +554,6 @@ __NTH (__option_is_end (const struct argp_option *__opt))
 # endif
 #endif /* Use extern inlines.  */
 
-#ifdef  __cplusplus
-}
-#endif
+__END_DECLS
 
 #endif /* argp.h */

@@ -31,7 +31,6 @@ import tempfile
 
 from gettext import gettext as _
 from threading import Thread
-from traceback import print_exc
 
 from softwareproperties.shortcuts import ShortcutException
 
@@ -53,6 +52,7 @@ LAUNCHPAD_PPA_API = 'https://launchpad.net/api/1.0/%s/+archive/%s'
 LAUNCHPAD_USER_API = 'https://launchpad.net/api/1.0/%s'
 LAUNCHPAD_USER_PPAS_API = 'https://launchpad.net/api/1.0/%s/ppas'
 LAUNCHPAD_DISTRIBUTION_API = 'https://launchpad.net/api/1.0/%s'
+LAUNCHPAD_DISTRIBUTION_SERIES_API = 'https://launchpad.net/api/1.0/%s/%s'
 # Specify to use the system default SSL store; change to a different path
 # to test with custom certificates.
 LAUNCHPAD_PPA_CERT = "/etc/ssl/certs/ca-certificates.crt"
@@ -90,6 +90,14 @@ def get_info_from_lp(lp_url):
 def get_ppa_info_from_lp(owner_name, ppa):
     lp_url = LAUNCHPAD_PPA_API % (owner_name, ppa)
     return get_info_from_lp(lp_url)
+
+def series_valid_for_distro(distribution, series):
+    lp_url = LAUNCHPAD_DISTRIBUTION_SERIES_API % (distribution, series)
+    try:
+        get_info_from_lp(lp_url)
+        return True
+    except PPAException:
+        return False
 
 def get_current_series_from_lp(distribution):
     lp_url = LAUNCHPAD_DISTRIBUTION_API % distribution
@@ -166,7 +174,7 @@ class AddPPASigningKey(object):
         try:
             # double check that the signing key is a v4 fingerprint (160bit)
             if not verify_keyid_is_v4(signing_key_fingerprint):
-                print("Error: signing key fingerprint '%s' too short" % 
+                print("Error: signing key fingerprint '%s' too short" %
                     signing_key_fingerprint)
                 return False
         except TypeError:
@@ -211,7 +219,7 @@ class AddPPASigningKey(object):
     def _verify_fingerprint(self, keyring, expected_fingerprint, keyring_dir):
         got_fingerprints = self._get_fingerprints(keyring, keyring_dir)
         if len(got_fingerprints) > 1:
-            print("Got '%s' fingerprints, expected only one" % 
+            print("Got '%s' fingerprints, expected only one" %
                   len(got_fingerprints))
             return False
         got_fingerprint = got_fingerprints[0]
@@ -223,7 +231,7 @@ class AddPPASigningKey(object):
 
     def add_ppa_signing_key(self, ppa_path=None):
         """Query and add the corresponding PPA signing key.
-        
+
         The signing key fingerprint is obtained from the Launchpad PPA page,
         via a secure channel, so it can be trusted.
         """
@@ -365,9 +373,16 @@ class PPAShortcutHandler(object):
         return self._info
 
     def expand(self, codename, distro=None):
-        if distro is not None and distro != self._info["distribution"]:
+        if (distro is not None
+                and distro != self._info["distribution"]
+                and not series_valid_for_distro(self._info["distribution"], codename)):
             # The requested PPA is for a foreign distribution.  Guess that
             # the user wants that distribution's current series.
+            # This only applies if the local distribution is not the same
+            # distribution the remote PPA is associated with AND the local
+            # codename is not equal to the PPA's series.
+            # e.g. local:Foobar/xenial and ppa:Ubuntu/xenial will use 'xenial'
+            #      local:Foobar/fluffy and ppa:Ubuntu/xenial will use '$latest'
             codename = get_current_series_from_lp(self._info["distribution"])
         debline = "deb http://ppa.launchpad.net/%s/%s/%s %s main" % (
             self._info["owner"][1:], self._info["name"],
@@ -389,11 +404,7 @@ class PPAShortcutHandler(object):
 def shortcut_handler(shortcut):
     if not shortcut.startswith("ppa:"):
         return None
-    try:
-        return PPAShortcutHandler(shortcut)
-    except ShortcutException:
-        print_exc()
-        return None
+    return PPAShortcutHandler(shortcut)
 
 
 if __name__ == "__main__":

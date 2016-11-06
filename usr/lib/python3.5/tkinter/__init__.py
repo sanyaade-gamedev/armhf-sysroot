@@ -1252,7 +1252,7 @@ class Misc:
         nsign, b, f, h, k, s, t, w, x, y, A, E, K, N, W, T, X, Y, D = args
         # Missing: (a, c, d, m, o, v, B, R)
         e = Event()
-        # serial field: valid vor all events
+        # serial field: valid for all events
         # number of button: ButtonPress and ButtonRelease events only
         # height field: Configure, ConfigureRequest, Create,
         # ResizeRequest, and Expose events only
@@ -1260,11 +1260,11 @@ class Misc:
         # time field: "valid for events that contain a time field"
         # width field: Configure, ConfigureRequest, Create, ResizeRequest,
         # and Expose events only
-        # x field: "valid for events that contain a x field"
+        # x field: "valid for events that contain an x field"
         # y field: "valid for events that contain a y field"
         # keysym as decimal: KeyPress and KeyRelease events only
         # x_root, y_root fields: ButtonPress, ButtonRelease, KeyPress,
-        # KeyRelease,and Motion events
+        # KeyRelease, and Motion events
         e.serial = getint(nsign)
         e.num = getint_event(b)
         try: e.focus = getboolean(f)
@@ -2775,7 +2775,7 @@ class Menu(Widget):
                     self.deletecommand(c)
         self.tk.call(self._w, 'delete', index1, index2)
     def entrycget(self, index, option):
-        """Return the resource value of an menu item for OPTION at INDEX."""
+        """Return the resource value of a menu item for OPTION at INDEX."""
         return self.tk.call(self._w, 'entrycget', index, '-' + option)
     def entryconfigure(self, index, cnf=None, **kw):
         """Configure a menu item at INDEX."""
@@ -3144,7 +3144,7 @@ class Text(Widget, XView, YView):
         """Creates a peer text widget with the given newPathName, and any
         optional standard configuration options. By default the peer will
         have the same start and end line as the parent widget, but
-        these can be overriden with the standard configuration options."""
+        these can be overridden with the standard configuration options."""
         self.tk.call(self._w, 'peer', 'create', newPathName,
             *self._options(cnf, kw))
     def peer_names(self): # new in Tk 8.5

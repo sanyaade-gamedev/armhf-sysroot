@@ -30,16 +30,23 @@ import time
 from cloudinit import log as logging
 from cloudinit import sources
 from cloudinit import util
-from .helpers.vmware.imc.config import Config
-from .helpers.vmware.imc.config_file import ConfigFile
-from .helpers.vmware.imc.config_nic import NicConfigurator
-from .helpers.vmware.imc.guestcust_event import GuestCustEventEnum
-from .helpers.vmware.imc.guestcust_state import GuestCustStateEnum
-from .helpers.vmware.imc.guestcust_error import GuestCustErrorEnum
-from .helpers.vmware.imc.guestcust_util import (
-    set_customization_status,
+
+from cloudinit.sources.helpers.vmware.imc.config \
+    import Config
+from cloudinit.sources.helpers.vmware.imc.config_file \
+    import ConfigFile
+from cloudinit.sources.helpers.vmware.imc.config_nic \
+    import NicConfigurator
+from cloudinit.sources.helpers.vmware.imc.guestcust_error \
+    import GuestCustErrorEnum
+from cloudinit.sources.helpers.vmware.imc.guestcust_event \
+    import GuestCustEventEnum
+from cloudinit.sources.helpers.vmware.imc.guestcust_state \
+    import GuestCustStateEnum
+from cloudinit.sources.helpers.vmware.imc.guestcust_util import (
+    enable_nics,
     get_nics_to_enable,
-    enable_nics
+    set_customization_status
 )
 
 LOG = logging.getLogger(__name__)
@@ -230,7 +237,7 @@ def wait_for_imc_cfg_file(dirpath, filename, maxwait=180, naplen=5):
 def read_vmware_imc(config):
     md = {}
     cfg = {}
-    ud = ""
+    ud = None
     if config.host_name:
         if config.domain_name:
             md['local-hostname'] = config.host_name + "." + config.domain_name
@@ -249,7 +256,7 @@ def read_ovf_environment(contents):
     props = get_properties(contents)
     md = {}
     cfg = {}
-    ud = ""
+    ud = None
     cfg_props = ['password']
     md_props = ['seedfrom', 'local-hostname', 'public-keys', 'instance-id']
     for (prop, val) in props.items():
@@ -261,9 +268,9 @@ def read_ovf_environment(contents):
             cfg[prop] = val
         elif prop == "user-data":
             try:
-                ud = base64.decodestring(val)
-            except:
-                ud = val
+                ud = base64.b64decode(val.encode())
+            except Exception:
+                ud = val.encode()
     return (md, ud, cfg)
 
 
@@ -277,7 +284,7 @@ def get_ovf_env(dirname):
             try:
                 contents = util.load_file(full_fn)
                 return (fname, contents)
-            except:
+            except Exception:
                 util.logexc(LOG, "Failed loading ovf file %s", full_fn)
     return (None, False)
 

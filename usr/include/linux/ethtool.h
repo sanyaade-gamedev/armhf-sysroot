@@ -16,6 +16,8 @@
 #include <linux/types.h>
 #include <linux/if_ether.h>
 
+#include <limits.h> /* for INT_MAX */
+
 /* All structures exposed to userland should be defined such that they
  * have the same layout for 32-bit and 64-bit userland.
  */
@@ -1316,10 +1318,27 @@ enum ethtool_sfeatures_retval_bits {
 
 #define SPEED_UNKNOWN		-1
 
+static __inline__ int ethtool_validate_speed(__u32 speed)
+{
+	return speed <= INT_MAX || speed == SPEED_UNKNOWN;
+}
+
 /* Duplex, half or full. */
 #define DUPLEX_HALF		0x00
 #define DUPLEX_FULL		0x01
 #define DUPLEX_UNKNOWN		0xff
+
+static __inline__ int ethtool_validate_duplex(__u8 duplex)
+{
+	switch (duplex) {
+	case DUPLEX_HALF:
+	case DUPLEX_FULL:
+	case DUPLEX_UNKNOWN:
+		return 1;
+	}
+
+	return 0;
+}
 
 /* Which connector port. */
 #define PORT_TP			0x00

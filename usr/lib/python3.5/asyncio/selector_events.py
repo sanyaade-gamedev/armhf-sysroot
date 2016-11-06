@@ -196,7 +196,7 @@ class BaseSelectorEventLoop(base_events.BaseEventLoop):
         transport = None
         try:
             protocol = protocol_factory()
-            waiter = futures.Future(loop=self)
+            waiter = self.create_future()
             if sslcontext:
                 transport = self._make_ssl_transport(
                     conn, protocol, sslcontext, waiter=waiter,
@@ -314,7 +314,7 @@ class BaseSelectorEventLoop(base_events.BaseEventLoop):
         """
         if self._debug and sock.gettimeout() != 0:
             raise ValueError("the socket must be non-blocking")
-        fut = futures.Future(loop=self)
+        fut = self.create_future()
         self._sock_recv(fut, False, sock, n)
         return fut
 
@@ -352,7 +352,7 @@ class BaseSelectorEventLoop(base_events.BaseEventLoop):
         """
         if self._debug and sock.gettimeout() != 0:
             raise ValueError("the socket must be non-blocking")
-        fut = futures.Future(loop=self)
+        fut = self.create_future()
         if data:
             self._sock_sendall(fut, False, sock, data)
         else:
@@ -382,27 +382,24 @@ class BaseSelectorEventLoop(base_events.BaseEventLoop):
                 data = data[n:]
             self.add_writer(fd, self._sock_sendall, fut, True, sock, data)
 
+    @coroutine
     def sock_connect(self, sock, address):
         """Connect to a remote socket at address.
-
-        The address must be already resolved to avoid the trap of hanging the
-        entire event loop when the address requires doing a DNS lookup. For
-        example, it must be an IP address, not an hostname, for AF_INET and
-        AF_INET6 address families. Use getaddrinfo() to resolve the hostname
-        asynchronously.
 
         This method is a coroutine.
         """
         if self._debug and sock.gettimeout() != 0:
             raise ValueError("the socket must be non-blocking")
-        fut = futures.Future(loop=self)
-        try:
-            base_events._check_resolved_address(sock, address)
-        except ValueError as err:
-            fut.set_exception(err)
-        else:
-            self._sock_connect(fut, sock, address)
-        return fut
+
+        if not hasattr(socket, 'AF_UNIX') or sock.family != socket.AF_UNIX:
+            resolved = base_events._ensure_resolved(address, loop=self)
+            if not resolved.done():
+                yield from resolved
+            _, _, _, _, address = resolved.result()[0]
+
+        fut = self.create_future()
+        self._sock_connect(fut, sock, address)
+        return (yield from fut)
 
     def _sock_connect(self, fut, sock, address):
         fd = sock.fileno()
@@ -413,8 +410,8 @@ class BaseSelectorEventLoop(base_events.BaseEventLoop):
             # connection runs in background. We have to wait until the socket
             # becomes writable to be notified when the connection succeed or
             # fails.
-            fut.add_done_callback(functools.partial(self._sock_connect_done,
-                                                    fd))
+            fut.add_done_callback(
+                functools.partial(self._sock_connect_done, fd))
             self.add_writer(fd, self._sock_connect_cb, fut, sock, address)
         except Exception as exc:
             fut.set_exception(exc)
@@ -453,7 +450,7 @@ class BaseSelectorEventLoop(base_events.BaseEventLoop):
         """
         if self._debug and sock.gettimeout() != 0:
             raise ValueError("the socket must be non-blocking")
-        fut = futures.Future(loop=self)
+        fut = self.create_future()
         self._sock_accept(fut, False, sock)
         return fut
 
@@ -565,6 +562,7 @@ class _SelectorTransport(transports._FlowControlMixin,
         self._loop.remove_reader(self._sock_fd)
         if not self._buffer:
             self._conn_lost += 1
+            self._loop.remove_writer(self._sock_fd)
             self._loop.call_soon(self._call_connection_lost, None)
 
     # On Python 3.3 and older, objects with a destructor part of a reference
@@ -578,8 +576,7 @@ class _SelectorTransport(transports._FlowControlMixin,
 
     def _fatal_error(self, exc, message='Fatal error on transport'):
         # Should be called from exception handler only.
-        if isinstance(exc, (BrokenPipeError,
-                            ConnectionResetError, ConnectionAbortedError)):
+        if isinstance(exc, base_events._FATAL_ERROR_IGNORE):
             if self._loop.get_debug():
                 logger.debug("%r: %s", self, message, exc_info=True)
         else:
@@ -659,6 +656,8 @@ class _SelectorSocketTransport(_SelectorTransport):
             logger.debug("%r resumes reading", self)
 
     def _read_ready(self):
+        if self._conn_lost:
+            return
         try:
             data = self._sock.recv(self.max_size)
         except (BlockingIOError, InterruptedError):
@@ -718,6 +717,8 @@ class _SelectorSocketTransport(_SelectorTransport):
     def _write_ready(self):
         assert self._buffer, 'Data should not be empty'
 
+        if self._conn_lost:
+            return
         try:
             n = self._sock.send(self._buffer)
         except (BlockingIOError, InterruptedError):
@@ -888,6 +889,8 @@ class _SelectorSslTransport(_SelectorTransport):
             logger.debug("%r resumes reading", self)
 
     def _read_ready(self):
+        if self._conn_lost:
+            return
         if self._write_wants_read:
             self._write_wants_read = False
             self._write_ready()
@@ -920,6 +923,8 @@ class _SelectorSslTransport(_SelectorTransport):
                     self.close()
 
     def _write_ready(self):
+        if self._conn_lost:
+            return
         if self._read_wants_write:
             self._read_wants_write = False
             self._read_ready()
@@ -997,6 +1002,8 @@ class _SelectorDatagramTransport(_SelectorTransport):
         return sum(len(data) for data, _ in self._buffer)
 
     def _read_ready(self):
+        if self._conn_lost:
+            return
         try:
             data, addr = self._sock.recvfrom(self.max_size)
         except (BlockingIOError, InterruptedError):

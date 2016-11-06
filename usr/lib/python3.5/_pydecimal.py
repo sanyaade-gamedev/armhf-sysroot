@@ -148,7 +148,7 @@ __xname__ = __name__    # sys.modules lookup (--without-threads)
 __name__ = 'decimal'    # For pickling
 __version__ = '1.70'    # Highest version of the spec this complies with
                         # See http://speleotrove.com/decimal/
-__libmpdec_version__ = "2.4.2" # compatible libmpdec version
+__libmpdec_version__ = "2.4.1" # compatible libmpdec version
 
 import math as _math
 import numbers as _numbers
@@ -252,7 +252,7 @@ class InvalidOperation(DecimalException):
 class ConversionSyntax(InvalidOperation):
     """Trying to convert badly formed string.
 
-    This occurs and signals invalid-operation if an string is being
+    This occurs and signals invalid-operation if a string is being
     converted to a number and it does not conform to the numeric string
     syntax.  The result is [0,qNaN].
     """
@@ -1102,7 +1102,7 @@ class Decimal(object):
     def __pos__(self, context=None):
         """Returns a copy, unless it is a sNaN.
 
-        Rounds the number (if more then precision digits)
+        Rounds the number (if more than precision digits)
         """
         if self._is_special:
             ans = self._check_nans(context=context)

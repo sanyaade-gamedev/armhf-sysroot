@@ -358,7 +358,7 @@ del modules, mod_dict
 # tuple.
 #
 # @param value The time, given as an ISO 8601 string, a time
-#              tuple, or a integer time value.
+#              tuple, or an integer time value.
 
 def _strftime(value):
     if datetime:
@@ -784,6 +784,7 @@ class Unmarshaller:
         self._stack = []
         self._marks = []
         self._data = []
+        self._value = False
         self._methodname = None
         self._encoding = "utf-8"
         self.append = self._stack.append
@@ -814,6 +815,8 @@ class Unmarshaller:
         if tag == "array" or tag == "struct":
             self._marks.append(len(self._stack))
         self._data = []
+        if self._value and tag not in self.dispatch:
+            raise ResponseError("unknown tag %r" % tag)
         self._value = (tag == "value")
 
     def data(self, text):
@@ -1616,7 +1619,7 @@ class ServerProxy:
         # magic method dispatcher
         return _Method(self.__request, name)
 
-    # note: to call a remote object with an non-standard name, use
+    # note: to call a remote object with a non-standard name, use
     # result getattr(server, "strange-python-name")(args)
 
     def __call__(self, attr):

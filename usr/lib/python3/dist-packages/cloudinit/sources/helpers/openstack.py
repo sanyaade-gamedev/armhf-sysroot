@@ -28,6 +28,7 @@ import six
 
 from cloudinit import ec2_utils
 from cloudinit import log as logging
+from cloudinit import net
 from cloudinit import sources
 from cloudinit import url_helper
 from cloudinit import util
@@ -145,8 +146,8 @@ class SourceMixin(object):
             return device
 
 
+@six.add_metaclass(abc.ABCMeta)
 class BaseReader(object):
-    __metaclass__ = abc.ABCMeta
 
     def __init__(self, base_path):
         self.base_path = base_path
@@ -156,7 +157,7 @@ class BaseReader(object):
         pass
 
     @abc.abstractmethod
-    def _path_read(self, path):
+    def _path_read(self, path, decode=False):
         pass
 
     @abc.abstractmethod
@@ -190,14 +191,14 @@ class BaseReader(object):
                   versions_available)
         return selected_version
 
-    def _read_content_path(self, item):
+    def _read_content_path(self, item, decode=False):
         path = item.get('content_path', '').lstrip("/")
         path_pieces = path.split("/")
         valid_pieces = [p for p in path_pieces if len(p)]
         if not valid_pieces:
             raise BrokenMetadata("Item %s has no valid content path" % (item))
         path = self._path_join(self.base_path, "openstack", *path_pieces)
-        return self._path_read(path)
+        return self._path_read(path, decode=decode)
 
     def read_v2(self):
         """Reads a version 2 formatted location.
@@ -298,7 +299,8 @@ class BaseReader(object):
         net_item = metadata.get("network_config", None)
         if net_item:
             try:
-                results['network_config'] = self._read_content_path(net_item)
+                content = self._read_content_path(net_item, decode=True)
+                results['network_config'] = content
             except IOError as e:
                 raise BrokenMetadata("Failed to read network"
                                      " configuration: %s" % (e))
@@ -333,8 +335,8 @@ class ConfigDriveReader(BaseReader):
         components = [base] + list(add_ons)
         return os.path.join(*components)
 
-    def _path_read(self, path):
-        return util.load_file(path, decode=False)
+    def _path_read(self, path, decode=False):
+        return util.load_file(path, decode=decode)
 
     def _fetch_available_versions(self):
         if self._versions is None:
@@ -446,7 +448,7 @@ class MetadataReader(BaseReader):
         self._versions = found
         return self._versions
 
-    def _path_read(self, path):
+    def _path_read(self, path, decode=False):
 
         def should_retry_cb(_request_args, cause):
             try:
@@ -463,7 +465,10 @@ class MetadataReader(BaseReader):
                                       ssl_details=self.ssl_details,
                                       timeout=self.timeout,
                                       exception_cb=should_retry_cb)
-        return response.contents
+        if decode:
+            return response.contents.decode()
+        else:
+            return response.contents
 
     def _path_join(self, base, *add_ons):
         return url_helper.combine_url(base, *add_ons)
@@ -474,26 +479,187 @@ class MetadataReader(BaseReader):
                                                retries=self.retries)
 
 
-def convert_vendordata_json(data, recurse=True):
-    """ data: a loaded json *object* (strings, arrays, dicts).
-    return something suitable for cloudinit vendordata_raw.
+# Convert OpenStack ConfigDrive NetworkData json to network_config yaml
+def convert_net_json(network_json=None, known_macs=None):
+    """Return a dictionary of network_config by parsing provided
+       OpenStack ConfigDrive NetworkData json format
 
-    if data is:
-       None: return None
-       string: return string
-       list: return data
-             the list is then processed in UserDataProcessor
-       dict: return convert_vendordata_json(data.get('cloud-init'))
+    OpenStack network_data.json provides a 3 element dictionary
+      - "links" (links are network devices, physical or virtual)
+      - "networks" (networks are ip network configurations for one or more
+                    links)
+      -  services (non-ip services, like dns)
+
+    networks and links are combined via network items referencing specific
+    links via a 'link_id' which maps to a links 'id' field.
+
+    To convert this format to network_config yaml, we first iterate over the
+    links and then walk the network list to determine if any of the networks
+    utilize the current link; if so we generate a subnet entry for the device
+
+    We also need to map network_data.json fields to network_config fields. For
+    example, the network_data links 'id' field is equivalent to network_config
+    'name' field for devices.  We apply more of this mapping to the various
+    link types that we encounter.
+
+    There are additional fields that are populated in the network_data.json
+    from OpenStack that are not relevant to network_config yaml, so we
+    enumerate a dictionary of valid keys for network_yaml and apply filtering
+    to drop these superflous keys from the network_config yaml.
     """
-    if not data:
+    if network_json is None:
         return None
-    if isinstance(data, six.string_types):
-        return data
-    if isinstance(data, list):
-        return copy.deepcopy(data)
-    if isinstance(data, dict):
-        if recurse is True:
-            return convert_vendordata_json(data.get('cloud-init'),
-                                           recurse=False)
-        raise ValueError("vendordata['cloud-init'] cannot be dict")
-    raise ValueError("Unknown data type for vendordata: %s" % type(data))
+
+    # dict of network_config key for filtering network_json
+    valid_keys = {
+        'physical': [
+            'name',
+            'type',
+            'mac_address',
+            'subnets',
+            'params',
+            'mtu',
+        ],
+        'subnet': [
+            'type',
+            'address',
+            'netmask',
+            'broadcast',
+            'metric',
+            'gateway',
+            'pointopoint',
+            'scope',
+            'dns_nameservers',
+            'dns_search',
+            'routes',
+        ],
+    }
+
+    links = network_json.get('links', [])
+    networks = network_json.get('networks', [])
+    services = network_json.get('services', [])
+
+    link_updates = []
+    link_id_info = {}
+    bond_name_fmt = "bond%d"
+    bond_number = 0
+    config = []
+    for link in links:
+        subnets = []
+        cfg = dict((k, v) for k, v in link.items()
+                   if k in valid_keys['physical'])
+        # 'name' is not in openstack spec yet, but we will support it if it is
+        # present.  The 'id' in the spec is currently implemented as the host
+        # nic's name, meaning something like 'tap-adfasdffd'.  We do not want
+        # to name guest devices with such ugly names.
+        if 'name' in link:
+            cfg['name'] = link['name']
+
+        link_mac_addr = None
+        if link.get('ethernet_mac_address'):
+            link_mac_addr = link.get('ethernet_mac_address').lower()
+            link_id_info[link['id']] = link_mac_addr
+
+        curinfo = {'name': cfg.get('name'), 'mac': link_mac_addr,
+                   'id': link['id'], 'type': link['type']}
+
+        for network in [n for n in networks
+                        if n['link'] == link['id']]:
+            subnet = dict((k, v) for k, v in network.items()
+                          if k in valid_keys['subnet'])
+            if 'dhcp' in network['type']:
+                t = 'dhcp6' if network['type'].startswith('ipv6') else 'dhcp4'
+                subnet.update({
+                    'type': t,
+                })
+            else:
+                subnet.update({
+                    'type': 'static',
+                    'address': network.get('ip_address'),
+                })
+            if network['type'] == 'ipv4':
+                subnet['ipv4'] = True
+            if network['type'] == 'ipv6':
+                subnet['ipv6'] = True
+            subnets.append(subnet)
+        cfg.update({'subnets': subnets})
+        if link['type'] in [None, 'ethernet', 'vif', 'ovs', 'phy',
+                            'bridge', 'tap']:
+            cfg.update({'type': 'physical', 'mac_address': link_mac_addr})
+        elif link['type'] in ['bond']:
+            params = {}
+            for k, v in link.items():
+                if k == 'bond_links':
+                    continue
+                elif k.startswith('bond'):
+                    params.update({k: v})
+
+            # openstack does not provide a name for the bond.
+            # they do provide an 'id', but that is possibly non-sensical.
+            # so we just create our own name.
+            link_name = bond_name_fmt % bond_number
+            bond_number += 1
+
+            # bond_links reference links by their id, but we need to add
+            # to the network config by their nic name.
+            # store that in bond_links_needed, and update these later.
+            link_updates.append(
+                (cfg, 'bond_interfaces', '%s',
+                 copy.deepcopy(link['bond_links']))
+            )
+            cfg.update({'params': params, 'name': link_name})
+
+            curinfo['name'] = link_name
+        elif link['type'] in ['vlan']:
+            name = "%s.%s" % (link['vlan_link'], link['vlan_id'])
+            cfg.update({
+                'name': name,
+                'vlan_id': link['vlan_id'],
+                'mac_address': link['vlan_mac_address'],
+            })
+            link_updates.append((cfg, 'vlan_link', '%s', link['vlan_link']))
+            link_updates.append((cfg, 'name', "%%s.%s" % link['vlan_id'],
+                                 link['vlan_link']))
+            curinfo.update({'mac': link['vlan_mac_address'],
+                            'name': name})
+        else:
+            raise ValueError(
+                'Unknown network_data link type: %s' % link['type'])
+
+        config.append(cfg)
+        link_id_info[curinfo['id']] = curinfo
+
+    need_names = [d for d in config
+                  if d.get('type') == 'physical' and 'name' not in d]
+
+    if need_names or link_updates:
+        if known_macs is None:
+            known_macs = net.get_interfaces_by_mac()
+
+        # go through and fill out the link_id_info with names
+        for link_id, info in link_id_info.items():
+            if info.get('name'):
+                continue
+            if info.get('mac') in known_macs:
+                info['name'] = known_macs[info['mac']]
+
+        for d in need_names:
+            mac = d.get('mac_address')
+            if not mac:
+                raise ValueError("No mac_address or name entry for %s" % d)
+            if mac not in known_macs:
+                raise ValueError("Unable to find a system nic for %s" % d)
+            d['name'] = known_macs[mac]
+
+        for cfg, key, fmt, target in link_updates:
+            if isinstance(target, (list, tuple)):
+                cfg[key] = [fmt % link_id_info[l]['name'] for l in target]
+            else:
+                cfg[key] = fmt % link_id_info[target]['name']
+
+    for service in services:
+        cfg = service
+        cfg.update({'type': 'nameserver'})
+        config.append(cfg)
+
+    return {'version': 1, 'config': config}
